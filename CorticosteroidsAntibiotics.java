@@ -1,6 +1,10 @@
+// todo:
+// a széléről érkezzenek a neutrofilok
+// AB térbeli, széléről
+// neutrofil time step -- improve
+
 // az antibiotikum túl gyors, túl erős -- realisztikusabbá tenni, sztochasztikusan marad pár egy darabig?
 // efficacy-k szétszedése. pl, egyelőre egy azonos immune efficacy van a decay-ben is és a source-ban is
-// késleltetett immunválasz megoldása (2-3 nap?) --> ne instant reagáljon
 // immunválasz lassú lecsengése
 
 // mit szeretnénk kihozni:
@@ -18,7 +22,14 @@ import HAL.Tools.FileIO;
 import HAL.Rand;
 import static HAL.Util.*;
 
+import HAL.GridsAndAgents.AgentPT2D;
+import HAL.Gui.OpenGL2DWindow;
+import HAL.Util;
+
+import static HAL.Util.RGB256;
+
 import java.io.File;
+import java.util.Random;
 
 public class CorticosteroidsAntibiotics{
 
@@ -31,17 +42,18 @@ public class CorticosteroidsAntibiotics{
 
         int y = 100, x = 100, visScale = 3;
         boolean isAntibiotics = true;
-        boolean isCorticosteroids = false;
+        boolean isCorticosteroids = true;
 
         GridWindow win = new GridWindow("Cellular state space, bacterial concentration, immune reaction.", x*3, y, visScale,true);
+        OpenGL2DWindow neutrophilWindow = new OpenGL2DWindow("Neutrophils", 500, 500, x,y);
 
         if (singularOrSweep.equals("singular")){
 
-            NewExperiment experiment = new NewExperiment(x, y, visScale, new Rand(1), isAntibiotics, isCorticosteroids, 2*2*12*60, 0.5, tabletsOrIntravenous, 110.0);
+            NewExperiment experiment = new NewExperiment(x, y, visScale, new Rand(1), isAntibiotics, isCorticosteroids, 1*6*60, 0.5, tabletsOrIntravenous, 110.0);
             experiment.numberOfTicks = experiment.numberOfTicksDelay + experiment.numberOfTicksDrug;
 
             experiment.Init();
-            double remainingHealthyCells = experiment.RunExperiment(win);
+            double remainingHealthyCells = experiment.RunExperiment(win, neutrophilWindow);
 
             if (isAntibiotics) {
                 System.out.println(tabletsOrIntravenous.equals("tablets") ? "Tablets AB drug source [ng / ml]: " + experiment.antibiotics.drugSourceStomach : "Intravenous drug concentration [nM]: " + experiment.antibiotics.NgPerMlToNanomolars(experiment.antibiotics.intravenousAntibioticsCon));
@@ -68,7 +80,7 @@ public class CorticosteroidsAntibiotics{
                     experiment.numberOfTicks = experiment.numberOfTicksDelay + experiment.numberOfTicksDrug;
 
                     experiment.Init();
-                    double remainingHealthyCells = experiment.RunExperiment(win);
+                    double remainingHealthyCells = experiment.RunExperiment(win, neutrophilWindow);
 
                     collectiveResults += remainingHealthyCells + ", ";
 
@@ -232,7 +244,7 @@ class AntibioticsDrug {
 
 }
 
-class NewExperiment extends AgentGrid2D<Cells>{
+class NewExperiment extends AgentGrid2D<CartilageCells>{
 
     public int x = 100;
     public int y = 100;
@@ -241,7 +253,8 @@ class NewExperiment extends AgentGrid2D<Cells>{
     public int numberOfTicksDrug;
     public int numberOfTicks;
     public PDEGrid2D bacterialCon;
-    public PDEGrid2D immuneResponseLevel; // similar to T-cell concentrations, but more generic
+    public NeutrophilLayer neutrophilLayer;
+    //public PDEGrid2D immuneResponseLevel; // similar to T-cell concentrations, but more generic
     public double antibioticsCon = 0;
     public double antibioticsConStomach = 0;
     public double corticosteroidCon = 0;
@@ -275,7 +288,7 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
     public NewExperiment(int xDim, int yDim, int visScale, Rand rn, boolean isAntibiotics, boolean isCorticosteroid, int numberOfTicksDelay, double staphyloDiffCoeff, String tabletsOrIntravenous, double fixedDamageRate){
 
-        super(xDim, yDim, Cells.class);
+        super(xDim, yDim, CartilageCells.class);
         this.x = xDim;
         this.y = yDim;
         this.visScale = visScale;
@@ -304,9 +317,8 @@ class NewExperiment extends AgentGrid2D<Cells>{
         }
 
         bacterialCon = new PDEGrid2D(xDim, yDim);
-        immuneResponseLevel = new PDEGrid2D(xDim, yDim);
         bacterialCon.Update();
-        immuneResponseLevel.Update();
+        neutrophilLayer = new NeutrophilLayer(xDim, yDim);
 
         outputDir = this.OutputDirectory();
         outFile = new FileIO(outputDir.concat("/").concat("Out").concat(".csv"), "w");
@@ -318,26 +330,44 @@ class NewExperiment extends AgentGrid2D<Cells>{
     public void Init(){
 
         WriteHeader();
+        String bacteriumSource = "blood"; // blood or injury
 
-        int initialPlace1 = length / 4 - length % 4 + (3 * x) / 4 - (3 * x) % 4;
-        int initialPlace2 = (3 * length) / 4 - (3 * length) % 4 + x / 4 - x % 4;
-
-        for (int i = 0; i < length; i++){
-            Cells c = NewAgentSQ(i);
-            c.CellInit(true,false, false);
-            if (i == initialPlace1 || i == initialPlace2) {
-                bacterialCon.Add(c.Isq(), 50.0);
-                bacterialCon.Update();
+        if (bacteriumSource.equals("blood")) {
+            int initialPlace1 = x / 2 - x % 2;
+            int initialPlace2 = (99 * length) / 100 - (99 * length) % 100 + x / 2 - x % 2;
+            for (int i = 0; i < length; i++) {
+                CartilageCells c = NewAgentSQ(i);
+                c.CellInit(true, false, false);
+                if (i == initialPlace1 || i == initialPlace2) {
+                    bacterialCon.Add(c.Isq(), 50.0);
+                    bacterialCon.Update();
+                }
+            }
+        }else if(bacteriumSource.equals("injury")){
+            Rand random = new Rand();
+            int initialPlace = length / 2 - length % 2 + x / 2 - x % 2;
+            for (int i = 0; i < length; i++) {
+                CartilageCells c = NewAgentSQ(i);
+                c.CellInit(true, false, false);
+                if (i == initialPlace) {
+                    bacterialCon.Add(c.Isq(), 50.0);
+                    bacterialCon.Update();
+                }
             }
         }
     }
 
-    public double RunExperiment(GridWindow win){
+    public double RunExperiment(GridWindow win, OpenGL2DWindow neutrophilWindow){
 
         double[] cellCounts = CountCells();
         // System.out.println(cellCounts[0]+", " + cellCounts[1] + ", " + cellCounts[2]);
 
         for (int tick = 0; tick < this.numberOfTicks; tick ++){
+
+            if (neutrophilWindow.IsClosed()){
+                break;
+            }
+            neutrophilWindow.TickPause(20);
 
             if ((numberOfTicksDelay == CorticosteroidsAntibiotics.BIG_VALUE) && (fixedDamageRate <= 100) && (((cellCounts[1] + cellCounts[2]) / 40000) * 100 >= fixedDamageRate)){
                 this.numberOfTicksDelay = tick - 1;
@@ -347,12 +377,13 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
             TimeStep(tick);
             DrawModel(win);
+            neutrophilLayer.DrawModel(neutrophilWindow);
 
             if( tick > 0 && ( (tick % (24*60)) == 0 ))
                 win.ToPNG(outputDir + "day" + Integer.toString(tick/(24*60)) + ".jpg");
 
             double totalBacterialCon = TotalBacterialCon();
-            double totalImmuneResponseLevel = TotalImmuneResponseLevel();
+            double totalImmuneResponseLevel = neutrophilLayer.Pop();
             cellCounts = CountCells();
             concentrationsFile.Write(totalBacterialCon + "," + totalImmuneResponseLevel + "," + antibioticsCon + "," + corticosteroidCon + "\n");
             outFile.Write(tick +"," + cellCounts[0] + "," + cellCounts[1]+
@@ -361,6 +392,7 @@ class NewExperiment extends AgentGrid2D<Cells>{
         }
 
         CloseFiles();
+        neutrophilWindow.Close();
 
         return cellCounts[0];
 
@@ -370,7 +402,7 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
         double healthyCells = 0, damagedCells = 0, deadCells = 0;
         double[] cellCount = new double[3];
-        for (Cells cell: this){
+        for (CartilageCells cell: this){
             if (cell.CellType == 0){
                 healthyCells += 1;
             }
@@ -389,35 +421,60 @@ class NewExperiment extends AgentGrid2D<Cells>{
         return cellCount;
     }
 
-    void TimeStepImmune(int tick){
+    void TimeStepNeutrophils(int tick){
 
         // decay of the immuneResponseLevel
-        for (Cells cell : this){
-            double immuneResponseNow = immuneResponseLevel.Get(cell.Isq());
-            // todo: 0.01 -- efficacy of CS wrt decay
-            double immuneResponseDecayEff = immuneResponseDecay + 0.01 * corticosteroid.CorticosteroidEfficacy(corticosteroidCon);
-            // System.out.println(immuneResponseDecayEff);
-            immuneResponseLevel.Add(cell.Isq(), -immuneResponseDecayEff * immuneResponseNow);
-        }
-        immuneResponseLevel.Update();
-
-        // immune response level increases where bacterial concentration is high
-        for (Cells cell : this){
-            double addedImmuneResponseLevel = ImmuneResponseSource(tick, cell);
-            double currentImmuneResponseLevel = immuneResponseLevel.Get(cell.Isq());
-            double newImmuneResponseLevel = addedImmuneResponseLevel + currentImmuneResponseLevel;
-            immuneResponseLevel.Set(cell.Isq(), newImmuneResponseLevel);
+        double decayFactor = immuneResponseDecay + 0.01 * corticosteroid.CorticosteroidEfficacy(corticosteroidCon);
+        for(Neutrophil cell: neutrophilLayer){
+            cell.NeutrophilDecay(decayFactor);
         }
 
-        immuneResponseLevel.DiffusionADI(immuneResponseDiffCoeff);
-        immuneResponseLevel.Update();
+        // neutrophils arrive when bacterial concentration is high or when other neutrophils call them
+        double corticosteroidSuppression = (1 - corticosteroid.CorticosteroidEfficacy(corticosteroidCon));
+        double bacterialFactor = 1 / (1 + 1/(Math.pow(TotalBacterialCon(),2)));
+        double arrivalFactor = bacterialFactor * corticosteroidSuppression;
+
+        for (int i = 0; i < arrivalFactor; i++) {
+            Rand random = new Rand();
+            int randomX, randomY;
+            double randomNumber = random.Double();
+            if(randomNumber < 0.25) {
+                randomX = 1;
+                randomY = random.Int(100);
+            }
+            else if(randomNumber < 0.5){
+                randomX = random.Int(100);
+                randomY = 1;
+            }
+            else if(randomNumber < 0.75){
+                randomX = random.Int(100);
+                randomY = 99;
+            }
+            else{
+                randomX = 99;
+                randomY = random.Int(100);
+            }
+            neutrophilLayer.NewAgentPT(randomX, randomY).Init();
+        }
+
+        // neutrophils "call" new ones by signaling, so this could be reasonable
+        for(Neutrophil cell: neutrophilLayer){
+            Rand rng = new Rand();
+            if(rng.Double() < neutrophilLayer.signalingIntensity) {
+                cell.NeutrophilArrivalToSite(neutrophilLayer.signalSuccess * arrivalFactor);
+            }
+        }
+
+        for(Neutrophil cell: neutrophilLayer){
+            cell.NeutrophilMove();
+        }
 
     }
 
     void TimeStepStaphylo(int tick){
 
         // bacterial reproduction
-        for (Cells cell : this){
+        for (CartilageCells cell : this){
             bacterialCon.Add(cell.Isq(), stapyloReproductionRate * bacterialCon.Get(cell.Isq()));
         }
 
@@ -425,12 +482,12 @@ class NewExperiment extends AgentGrid2D<Cells>{
         bacterialCon.Update();
 
         // removal of bacteria
-        for (Cells cell : this){
+        for (CartilageCells cell : this){
             // double removalEfficacy = 2/(1+Math.exp(100*drugNow));
             // double removalEfficacy = 100*Math.pow(drugNow, 2)/(1+100*Math.pow(drugNow,2));
             double drugBacterialRemovalEff = 0.01 * antibiotics.AntibioticsEfficacy(antibioticsCon);
             System.out.println(drugBacterialRemovalEff);
-            double immuneBacterialRemovalEff = 0.5 * 1 / (1 + 1/(Math.pow(immuneResponseLevel.Get(cell.Isq()),2)));
+            double immuneBacterialRemovalEff = 0.5 * 1 / (1 + 1/(Math.pow(neutrophilLayer.PopAt(cell.Isq()), 2)));
             bacterialCon.Add(cell.Isq(), -drugBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
             bacterialCon.Add(cell.Isq(), -immuneBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
         }
@@ -471,12 +528,12 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
     }
 
-    void TimeStepCells(int tick){
+    void TimeStepCartilageCells(int tick){
 
-        for (Cells cell : this){
+        for (CartilageCells cell : this){
             cell.CellDamage();
         }
-        for (Cells cell : this) {
+        for (CartilageCells cell : this) {
             cell.CellDeath();
         }
 
@@ -484,10 +541,10 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
     void TimeStep(int tick){
 
-        TimeStepImmune(tick);
-        TimeStepDrug(tick); // both antibiotics and steroid
         TimeStepStaphylo(tick);
-        TimeStepCells(tick);
+        TimeStepCartilageCells(tick);
+        TimeStepNeutrophils(tick); // immune response
+        TimeStepDrug(tick); // both antibiotics and steroid
 
     }
 
@@ -501,26 +558,6 @@ class NewExperiment extends AgentGrid2D<Cells>{
             totalBacterialCon = totalBacterialCon + bacterialConInCell;
         }
         return totalBacterialCon;
-    }
-
-    double TotalImmuneResponseLevel() {
-
-        double totalImmuneResponseLevel = 0;
-        for (int i = 0; i < length; i++){
-            cellularImmuneResponseLevel[i] = immuneResponseLevel.Get(i);
-        }
-        for (double immuneResponseInCell : cellularImmuneResponseLevel ){
-            totalImmuneResponseLevel = totalImmuneResponseLevel + immuneResponseInCell;
-        }
-        return totalImmuneResponseLevel;
-    }
-
-    double ImmuneResponseSource(int tick, Cells cell){
-
-        // todo: improve
-        double currentBacterialCon = bacterialCon.Get(cell.Isq());
-        return (1 - corticosteroid.CorticosteroidEfficacy(corticosteroidCon)) * 1 / (1 + 1/(Math.pow(currentBacterialCon,2)));
-
     }
 
     double AntibioticsSourceStomach(int tick){
@@ -594,7 +631,7 @@ class NewExperiment extends AgentGrid2D<Cells>{
     void DrawModel(GridWindow vis){
 
         for (int i = 0; i < length; i++) {
-            Cells drawMe = GetAgent(i);
+            CartilageCells drawMe = GetAgent(i);
 
             if (drawMe == null){
                 vis.SetPix(i, RGB256(255, 255, 255));
@@ -616,13 +653,13 @@ class NewExperiment extends AgentGrid2D<Cells>{
 
             vis.SetPix(ItoX(i) + xDim, ItoY(i), HeatMapGRB(100*bacterialCon.Get(i)));
 
-            vis.SetPix(ItoX(i) + 2 * xDim, ItoY(i), HeatMapRBG(100*immuneResponseLevel.Get(i)));
+            vis.SetPix(ItoX(i) + 2 * xDim, ItoY(i), HeatMapBGR(0.1*neutrophilLayer.PopAt(i)));
         }
     }
 
 }
 
-class Cells extends AgentSQ2Dunstackable<NewExperiment>{
+class CartilageCells extends AgentSQ2Dunstackable<NewExperiment>{
     int CellType;
 
     public void CellInit(boolean isHealthy, boolean isDamaged,
@@ -646,7 +683,7 @@ class Cells extends AgentSQ2Dunstackable<NewExperiment>{
 
         // chondral damage: depends on the immune response strength (a strong immune response kills bacteria, but damages the cartilage as well)
 
-        double immuneConAtCell = G.immuneResponseLevel.Get(Isq());
+        double immuneConAtCell = G.neutrophilLayer.PopAt(Isq());
         double effectiveDamageProb = immuneConAtCell * G.damageRate * G.xDim * G.yDim;
 
         if (this.CellType == 0){ // healthy cell
@@ -664,4 +701,71 @@ class Cells extends AgentSQ2Dunstackable<NewExperiment>{
             }
         }
     }
+}
+
+class Neutrophil extends AgentPT2D<NeutrophilLayer> {
+    int color;
+    Rand random = new Rand();
+
+    public void Init() {this.color = RGB256(random.Int(255),random.Int(255),random.Int(255));}
+
+    public void NeutrophilDecay(double decayProb){
+        if(G.rng.Double()<decayProb){
+            Dispose();
+            return;
+        }
+    }
+
+    public void NeutrophilArrivalToSite(double signalSuccess){
+        if((G.PopAt(Isq())<5) && G.rng.Double()<signalSuccess){
+            G.NewAgentPT(Xpt(), Ypt()).Init();
+        }
+    }
+
+    public void NeutrophilMove(){
+        G.rng.RandomPointInCircle(0.5,G.moveCoords);
+        MoveSafePT(Xpt()+G.moveCoords[0], Ypt()+G.moveCoords[1]);
+    }
+
+}
+
+class NeutrophilLayer extends AgentGrid2D<Neutrophil> {
+
+    double signalingIntensity = 0.5;
+    double signalSuccess = 0.7;
+
+    Rand rng = new Rand();
+    double[]moveCoords=new double[2];
+
+    public NeutrophilLayer(int x, int y) {super(x, y, Neutrophil.class);}
+
+    public void DrawModel(OpenGL2DWindow win){
+        win.Clear(Util.BLACK);
+        for (Neutrophil cell : this){
+            win.Circle(cell.Xpt(), cell.Ypt(),0.5, cell.color);
+        }
+        win.Update();
+    }
+
+    //public void runNeutrophils(){
+
+        //OpenGL2DWindow win = new OpenGL2DWindow("Neutrophils", 500, 500, x,y);
+
+        // init model
+
+        //for (int i = 0; i<timesteps; i++){
+            //if (win.IsClosed()){
+            //    break;
+            //}
+            //win.TickPause(20);
+            //if(model.Pop()==0){
+            //    model.NewAgentSQ(model.xDim/2, model.yDim/2).Init();
+            //}
+
+            //draw
+            //model.DrawModel(win);
+        //}
+        //win.Close();
+
+    //}
 }
