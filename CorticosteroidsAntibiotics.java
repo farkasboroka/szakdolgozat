@@ -330,7 +330,7 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
     public void Init(){
 
         WriteHeader();
-        String bacteriumSource = "blood"; // blood or injury
+        String bacteriumSource = "injury"; // blood or injury
 
         if (bacteriumSource.equals("blood")) {
             int initialPlace1 = x / 2 - x % 2;
@@ -345,7 +345,7 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
             }
         }else if(bacteriumSource.equals("injury")){
             Rand random = new Rand();
-            int initialPlace = length / 2 - length % 2 + x / 2 - x % 2;
+            int initialPlace =  x / 2 - x % 2;
             for (int i = 0; i < length; i++) {
                 CartilageCells c = NewAgentSQ(i);
                 c.CellInit(true, false, false);
