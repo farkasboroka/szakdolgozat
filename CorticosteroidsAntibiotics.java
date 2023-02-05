@@ -379,8 +379,8 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
             DrawModel(win);
             neutrophilLayer.DrawModel(neutrophilWindow);
 
-            if( tick > 0 && ( (tick % (24*60)) == 0 ))
-                win.ToPNG(outputDir + "day" + Integer.toString(tick/(24*60)) + ".jpg");
+            if( tick > 0 && ( (tick % (3*60)) == 0 ))
+                win.ToPNG(outputDir + "3_hour_period_" + Integer.toString(tick/(3*60)) + ".jpg");
 
             double totalBacterialCon = TotalBacterialCon();
             double totalImmuneResponseLevel = neutrophilLayer.Pop();
@@ -433,44 +433,27 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
         double corticosteroidSuppression = (1 - corticosteroid.CorticosteroidEfficacy(corticosteroidCon));
         double bacterialFactor = 1 / (1 + 1/(Math.pow(TotalBacterialCon(),2)));
         double arrivalFactor = bacterialFactor * corticosteroidSuppression;
-
-        for (int i = 0; i < arrivalFactor; i++) {
-            Rand random = new Rand();
-            int randomX, randomY;
-            double randomNumber = random.Double();
-            if(randomNumber < 0.25) {
-                randomX = 1;
-                randomY = random.Int(100);
-            }
-            else if(randomNumber < 0.5){
-                randomX = random.Int(100);
-                randomY = 1;
-            }
-            else if(randomNumber < 0.75){
-                randomX = random.Int(100);
-                randomY = 99;
-            }
-            else{
-                randomX = 99;
-                randomY = random.Int(100);
-            }
-            neutrophilLayer.NewAgentPT(randomX, randomY).Init();
-        }
+        NeutrophilArrivalToSiteCalledByBacteria(arrivalFactor);
 
         // neutrophils "call" new ones by signaling, so this could be reasonable
         for(Neutrophil cell: neutrophilLayer){
             Rand rng = new Rand();
             if(rng.Double() < neutrophilLayer.signalingIntensity) {
-                cell.NeutrophilArrivalToSite(neutrophilLayer.signalSuccess * arrivalFactor);
+                cell.NeutrophilArrivalToSiteCalledByNeutrophils(neutrophilLayer.signalSuccess * arrivalFactor);
             }
         }
 
         for(Neutrophil cell: neutrophilLayer){
             cell.NeutrophilMove();
         }
-
     }
 
+    public void NeutrophilArrivalToSiteCalledByBacteria(double arrivalFactor){
+        for (int i = 0; i < arrivalFactor; i++) {
+            int[] arrivalPlace = Neutrophil.arrivalFromBorders();
+            neutrophilLayer.NewAgentPT(arrivalPlace[0], arrivalPlace[1]).Init();
+        }
+    }
     void TimeStepStaphylo(int tick){
 
         // bacterial reproduction
@@ -716,15 +699,40 @@ class Neutrophil extends AgentPT2D<NeutrophilLayer> {
         }
     }
 
-    public void NeutrophilArrivalToSite(double signalSuccess){
+    public void NeutrophilArrivalToSiteCalledByNeutrophils(double signalSuccess){
         if((G.PopAt(Isq())<5) && G.rng.Double()<signalSuccess){
-            G.NewAgentPT(Xpt(), Ypt()).Init();
+            int[] arrivalPlace = arrivalFromBorders();
+            G.NewAgentPT(arrivalPlace[0], arrivalPlace[1]).Init();
         }
     }
 
     public void NeutrophilMove(){
         G.rng.RandomPointInCircle(0.5,G.moveCoords);
         MoveSafePT(Xpt()+G.moveCoords[0], Ypt()+G.moveCoords[1]);
+    }
+
+    public static int[] arrivalFromBorders(){
+        Rand random = new Rand();
+        int randomX, randomY;
+        int randomNumber = random.Int(4);
+        if(randomNumber < 1){
+            randomX = 1;
+            randomY = random.Int(100);
+        }
+        else if(randomNumber < 2){
+            randomX = random.Int(100);
+            randomY = 1;
+        }
+        else if(randomNumber < 3){
+            randomX = random.Int(100);
+            randomY= 99;
+        }
+        else{
+            randomX = 99;
+            randomY = random.Int(100);
+        }
+        int[] arrivalPlace = {randomX, randomY};
+        return arrivalPlace;
     }
 
 }
@@ -747,25 +755,27 @@ class NeutrophilLayer extends AgentGrid2D<Neutrophil> {
         win.Update();
     }
 
+
+
     //public void runNeutrophils(){
 
-        //OpenGL2DWindow win = new OpenGL2DWindow("Neutrophils", 500, 500, x,y);
+    //OpenGL2DWindow win = new OpenGL2DWindow("Neutrophils", 500, 500, x,y);
 
-        // init model
+    // init model
 
-        //for (int i = 0; i<timesteps; i++){
-            //if (win.IsClosed()){
-            //    break;
-            //}
-            //win.TickPause(20);
-            //if(model.Pop()==0){
-            //    model.NewAgentSQ(model.xDim/2, model.yDim/2).Init();
-            //}
+    //for (int i = 0; i<timesteps; i++){
+    //if (win.IsClosed()){
+    //    break;
+    //}
+    //win.TickPause(20);
+    //if(model.Pop()==0){
+    //    model.NewAgentSQ(model.xDim/2, model.yDim/2).Init();
+    //}
 
-            //draw
-            //model.DrawModel(win);
-        //}
-        //win.Close();
+    //draw
+    //model.DrawModel(win);
+    //}
+    //win.Close();
 
     //}
 }
