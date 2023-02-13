@@ -49,7 +49,7 @@ public class CorticosteroidsAntibiotics{
 
         if (singularOrSweep.equals("singular")){
 
-            NewExperiment experiment = new NewExperiment(x, y, visScale, new Rand(1), isAntibiotics, isCorticosteroids, 1*6*60, 0.5, 0.1, tabletsOrIntravenous, 110.0);
+            NewExperiment experiment = new NewExperiment(x, y, visScale, new Rand(1), isAntibiotics, isCorticosteroids, 24*60, 1, 0.5, tabletsOrIntravenous, 110.0);
             experiment.numberOfTicks = experiment.numberOfTicksDelay + experiment.numberOfTicksDrug;
 
             experiment.Init();
@@ -268,8 +268,8 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
 
     public double fixedDamageRate;
 
-    public double stapyloReproductionRate = Math.pow(10,-4);
-    public double damageRate = Math.pow(10,-6);
+    public double stapyloReproductionRate = 2 * Math.pow(10,-4);
+    public double damageRate = Math.pow(10,-5);
     public double deathProb = 7.02 * Math.pow(10,-4); // P_D
     public double staphyloDiffCoeff; // D_V [sigma^2 / min]
     public double antibioticsDiffCoeff;
@@ -311,7 +311,7 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
 
             this.antibiotics = new AntibioticsDrug();
             this.corticosteroid = new CorticosteroidDrug();
-            this.numberOfTicksDrug = 2 * 24 * 60; // we administer antibiotics for 5 days, i.e. 5*24*60 minutes
+            this.numberOfTicksDrug = 5 * 24 * 60; // we administer antibiotics for 5 days, i.e. 5*24*60 minutes
 
         } else {
 
@@ -364,8 +364,31 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
 
     }
 
+    public static int[] Infiltration(){
+        Rand random = new Rand();
+        int randomX, randomY;
+        int randomNumber = random.Int(4);
+        if(randomNumber < 1){
+            randomX = 1;
+            randomY = random.Int(100);
+        }
+        else if(randomNumber < 2){
+            randomX = random.Int(100);
+            randomY = 1;
+        }
+        else if(randomNumber < 3){
+            randomX = random.Int(100);
+            randomY= 99;
+        }
+        else{
+            randomX = 99;
+            randomY = random.Int(100);
+        }
+        int[] arrivalPlace = {randomX, randomY};
+        return arrivalPlace;
+    }
     public int BacterialArrivalToSite(){
-        int[] arrivalPlace = Neutrophil.arrivalFromBorders();
+        int[] arrivalPlace = Infiltration();
         return 100 * arrivalPlace[0] + arrivalPlace[1];
     }
     public double RunExperiment(GridWindow win, OpenGL2DWindow neutrophilWindow){
@@ -462,7 +485,7 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
 
     public void NeutrophilArrivalToSiteCalledByBacteria(double arrivalFactor){
         for (int i = 0; i < arrivalFactor; i++) {
-            int[] arrivalPlace = Neutrophil.arrivalFromBorders();
+            int[] arrivalPlace = Infiltration();
             neutrophilLayer.NewAgentPT(arrivalPlace[0], arrivalPlace[1]).Init();
         }
     }
@@ -480,9 +503,9 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
         for (CartilageCells cell : this){
             // double removalEfficacy = 2/(1+Math.exp(100*drugNow));
             // double removalEfficacy = 100*Math.pow(drugNow, 2)/(1+100*Math.pow(drugNow,2));
-            double drugBacterialRemovalEff = 0.01 * antibiotics.AntibioticsEfficacy(TotalAntibioticsCon());
+            double drugBacterialRemovalEff = 0.01 * antibiotics.AntibioticsEfficacy(antibioticsLayer.Get(cell.Isq()));
             System.out.println(drugBacterialRemovalEff);
-            double immuneBacterialRemovalEff = 0.5 * 1 / (1 + 1/(Math.pow(neutrophilLayer.PopAt(cell.Isq()), 2)));
+            double immuneBacterialRemovalEff = 0.005 * 1 / (1 + 1/(Math.pow(neutrophilLayer.PopAt(cell.Isq()), 2)));
             bacterialCon.Add(cell.Isq(), -drugBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
             bacterialCon.Add(cell.Isq(), -immuneBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
         }
@@ -523,13 +546,16 @@ class NewExperiment extends AgentGrid2D<CartilageCells>{
             this.antibioticsConStomach += AntibioticsSourceStomach(tick);
             this.corticosteroidConStomach += CorticosteroidSourceStomach(tick);
 
-            double newCon = this.antibioticsCon;
+            double conDifference = this.antibioticsCon - originalCon;
 
-            if(newCon > originalCon) {
-                antibioticsLayer.Add(BacterialArrivalToSite(), newCon - originalCon);
-            }else if(originalCon > newCon){
+            for(int i=0; i < Math.round(this.antibioticsCon); i++){
+                if(conDifference > 0) {
+                    antibioticsLayer.Add(BacterialArrivalToSite(), conDifference / Math.round(this.antibioticsCon));
+                }
+            }
+            if(conDifference < 0){
                 for (CartilageCells cell : this){
-                    antibioticsLayer.Add(cell.Isq(), -((originalCon - newCon)/originalCon) * antibioticsLayer.Get(cell.Isq()));
+                    antibioticsLayer.Add(cell.Isq(), (conDifference/originalCon) * antibioticsLayer.Get(cell.Isq()));
                 }
             }
 
@@ -711,7 +737,7 @@ class CartilageCells extends AgentSQ2Dunstackable<NewExperiment>{
         // chondral damage: depends on the immune response strength (a strong immune response kills bacteria, but damages the cartilage as well)
 
         double immuneConAtCell = G.neutrophilLayer.PopAt(Isq());
-        double effectiveDamageProb = immuneConAtCell * G.damageRate * G.xDim * G.yDim;
+        double effectiveDamageProb = immuneConAtCell * G.damageRate;
 
         if (this.CellType == 0){ // healthy cell
             if (G.rn.Double() < effectiveDamageProb) {
@@ -744,39 +770,15 @@ class Neutrophil extends AgentPT2D<NeutrophilLayer> {
     }
 
     public void NeutrophilArrivalToSiteCalledByNeutrophils(double signalSuccess){
-        if((G.PopAt(Isq())<5) && G.rng.Double()<signalSuccess){
-            int[] arrivalPlace = arrivalFromBorders();
+        if((G.PopAt(Isq())<2) && G.rng.Double()<signalSuccess){ //
+            int[] arrivalPlace = NewExperiment.Infiltration();
             G.NewAgentPT(arrivalPlace[0], arrivalPlace[1]).Init();
         }
     }
 
     public void NeutrophilMove(){
-        G.rng.RandomPointInCircle(0.5,G.moveCoords);
+        G.rng.RandomPointInCircle(2,G.moveCoords);
         MoveSafePT(Xpt()+G.moveCoords[0], Ypt()+G.moveCoords[1]);
-    }
-
-    public static int[] arrivalFromBorders(){
-        Rand random = new Rand();
-        int randomX, randomY;
-        int randomNumber = random.Int(4);
-        if(randomNumber < 1){
-            randomX = 1;
-            randomY = random.Int(100);
-        }
-        else if(randomNumber < 2){
-            randomX = random.Int(100);
-            randomY = 1;
-        }
-        else if(randomNumber < 3){
-            randomX = random.Int(100);
-            randomY= 99;
-        }
-        else{
-            randomX = 99;
-            randomY = random.Int(100);
-        }
-        int[] arrivalPlace = {randomX, randomY};
-        return arrivalPlace;
     }
 
 }
