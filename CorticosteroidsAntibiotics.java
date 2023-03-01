@@ -37,7 +37,7 @@ public class CorticosteroidsAntibiotics{
 
         int y = 100, x = 100, visScale = 3;
         boolean isAntibiotics = true;
-        boolean isCorticosteroids = true;
+        boolean isCorticosteroids = false;
 
         GridWindow win = new GridWindow("Cellular state space, bacterial concentration, immune reaction.", x*4, y, visScale,true);
         OpenGL2DWindow neutrophilWindow = new OpenGL2DWindow("Neutrophils", 500, 500, x,y);
@@ -83,7 +83,7 @@ class NewExperiment{
 
     public double immuneResponseDecay = 0.00005;
     public boolean isAntibiotics = true;
-    public boolean isCorticosteroid = true;
+    public boolean isCorticosteroid = false;
 
     public FileIO outFile;
     public FileIO paramFile;
