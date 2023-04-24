@@ -43,8 +43,8 @@ public class CorticosteroidsAntibiotics{
 
 class NewExperiment{
 
-    public int x;
-    public int y;
+    public int x = 100;
+    public int y = 100;
     public int visScale;
     public int numberOfTicksDelay;
     public int numberOfTicksDrug;
@@ -60,7 +60,6 @@ class NewExperiment{
     public double corticosteroidConCompartment1 = 0;
     public Rand rn;
     public double[] cellularBacterialCon = new double[x*y];
-
     public double staphyloReproductionRate = Math.pow(10,-2);
     public double staphyloDiffCoeff; // D_V [sigma^2 / min]
     public double antibioticsDiffCoeff;
@@ -211,8 +210,8 @@ class NewExperiment{
             Rand rng = new Rand();
             double randomDouble = rng.Double();
             if(randomDouble < neutrophilLayer.signalingIntensity) {
-                cell.NeutrophilsCallNeutrophils(300*neutrophilLayer.signalSuccess * corticosteroidSuppression * bacterialCon.Get(cell.Isq()));
-            }
+               cell.NeutrophilsCallNeutrophils(300*neutrophilLayer.signalSuccess * corticosteroidSuppression * bacterialCon.Get(cell.Isq()));
+           }
         }
 
         for(Neutrophil cell: neutrophilLayer){
@@ -324,10 +323,10 @@ class NewExperiment{
     double TotalBacterialCon() {
 
         double totalBacterialCon = 0;
-        for (int i = 0; i < cartilageLayer.length; i++){
+        for (int i =0; i < cartilageLayer.length; i++){
             cellularBacterialCon[i] = bacterialCon.Get(i);
         }
-        for (double bacterialConInCell : cellularBacterialCon ){
+        for (double bacterialConInCell : cellularBacterialCon){
             totalBacterialCon = totalBacterialCon + bacterialConInCell;
         }
         return totalBacterialCon;
@@ -377,6 +376,13 @@ class NewExperiment{
             projPath += "/steroidBoostedAB";
         } else {
             projPath += "/AntibioticsOnly";
+        }
+
+        double drugInfo;
+        if (this.isAntibiotics == false){
+            drugInfo = 0.0;
+        } else {
+            drugInfo = this.antibiotics.drugSourceCompartment1;
         }
 
         String outputDir = projPath + "/";
