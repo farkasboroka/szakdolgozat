@@ -43,8 +43,8 @@ public class CorticosteroidsAntibiotics{
 
 class NewExperiment{
 
-    public int x = 100;
-    public int y = 100;
+    public int x;
+    public int y;
     public int visScale;
     public int numberOfTicksDelay;
     public int numberOfTicksDrug;
@@ -53,13 +53,12 @@ class NewExperiment{
     public PDEGrid2D antibioticsLayer;
     public NeutrophilLayer neutrophilLayer;
     public CartilageLayer cartilageLayer;
-    //public PDEGrid2D immuneResponseLevel; // similar to T-cell concentrations, but more generic
     public double antibioticsCon = 0;
     public double antibioticsConCompartment1 = 0;
     public double corticosteroidCon = 0;
     public double corticosteroidConCompartment1 = 0;
     public Rand rn;
-    public double[] cellularBacterialCon = new double[x*y];
+    public double[] cellularBacterialCon;
     public double staphyloReproductionRate = Math.pow(10,-2);
     public double staphyloDiffCoeff; // D_V [sigma^2 / min]
     public double antibioticsDiffCoeff;
@@ -83,6 +82,7 @@ class NewExperiment{
 
         this.x = xDim;
         this.y = yDim;
+        this.cellularBacterialCon = new double[x*y];
         this.visScale = visScale;
         this.numberOfTicksDelay = numberOfTicksDelay;
         this.staphyloDiffCoeff = staphyloDiffCoeff;
@@ -132,7 +132,6 @@ class NewExperiment{
     public double RunExperiment(GridWindow win, OpenGL2DWindow neutrophilWindow){
 
         double[] cellCounts = CountCells();
-        // System.out.println(cellCounts[0]+", " + cellCounts[1] + ", " + cellCounts[2]);
 
         for (int tick = 0; tick < this.numberOfTicks; tick ++){
 
@@ -243,10 +242,7 @@ class NewExperiment{
 
             // removal of bacteria
             for (CartilageCell cell : cartilageLayer) {
-                // double removalEfficacy = 2/(1+Math.exp(100*drugNow));
-                // double removalEfficacy = 100*Math.pow(drugNow, 2)/(1+100*Math.pow(drugNow,2));
                 double drugBacterialRemovalEff = 0.1 * antibiotics.DrugEfficacy(antibioticsLayer.Get(cell.Isq()));
-                //System.out.println(drugBacterialRemovalEff);
                 double immuneBacterialRemovalEff = 0.05 * 1 / (1 + 1 / (Math.pow(neutrophilLayer.PopAt(cell.Isq()), 2)));
                 bacterialCon.Add(cell.Isq(), -drugBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
                 bacterialCon.Add(cell.Isq(), -immuneBacterialRemovalEff * bacterialCon.Get(cell.Isq()));
