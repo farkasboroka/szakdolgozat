@@ -1,2 +1,2 @@
 # AB-CS-x-SA
-In silico evaluation of antibiotic and corticosteroid treatment for septic arthritis - a hybrid mathematical approach
+In silico analysis of antibiotics treatment combined with corticosteroids for septic arthritis in a hybrid mathematical model
